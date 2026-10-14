@@ -255,6 +255,13 @@ impl Backend for TestBackend {
     {
         for (x, y, c) in content {
             self.buffer[(x, y)] = c.clone();
+            // Reset following cells if multi-width (they would be hidden by the grapheme)
+            let next_symbol = x
+                .saturating_add(c.cell_width())
+                .min(self.buffer.area.right());
+            for x in x.saturating_add(1)..next_symbol {
+                self.buffer[(x, y)].reset();
+            }
         }
         Ok(())
     }
@@ -548,6 +555,32 @@ mod tests {
         backend.draw([(0, 0, &cell)].into_iter()).unwrap();
         backend.draw([(0, 1, &cell)].into_iter()).unwrap();
         backend.assert_buffer_lines(["a         "; 2]);
+    }
+
+    #[test]
+    fn draw_wide_symbol() {
+        let mut backend = TestBackend::with_lines(["abcd"]);
+        backend
+            .draw([(0, 0, &Cell::new("コ"))].into_iter())
+            .unwrap();
+        backend.assert_buffer_lines(["コcd"]);
+    }
+
+    #[test]
+    fn draw_wide_symbol_then_hidden_cell() {
+        let mut backend = TestBackend::with_lines(["abcd"]);
+        let cells = [(0, 0, &Cell::new("コ")), (1, 0, &Cell::new("x"))];
+        backend.draw(cells.into_iter()).unwrap();
+        assert_eq!(backend.buffer()[(1, 0)].symbol(), "x");
+    }
+
+    #[test]
+    fn draw_wide_symbol_at_last_column() {
+        let mut backend = TestBackend::with_lines(["ab"]);
+        backend
+            .draw([(1, 0, &Cell::new("コ"))].into_iter())
+            .unwrap();
+        assert_eq!(backend.buffer()[(1, 0)].symbol(), "コ");
     }
 
     #[test]
